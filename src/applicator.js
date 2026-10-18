@@ -2,8 +2,10 @@ import * as THREE from 'three';
 
 // Millimetres throughout. Component envelopes are design targets, not selected hardware.
 export const dimensions={diameter:20,bodyLength:88,wall:1.2,totalLength:126,cottonWidth:7.5,cottonLength:12,buttonTravel:.3};
-export function createApplicator({head:headStyle='tapered'}={}){
+export function createApplicator({head:headStyle='tapered',aimShift=2.5,joint=37}={}){
  const tapered=headStyle==='tapered';
+ // v4.1: body/head joint moves down 7 mm so the longer stem keeps 126 mm overall; smaller 5 x 9 mm cotton.
+ const J=tapered?joint:44,cottonR=tapered?2.5:3.75,cottonH=tapered?4.5:6,cottonY=80-cottonH;
  const pen=new THREE.Group();pen.scale.setScalar(1/(20/.96));pen.rotation.z=-.34;
  const material=(color,metalness=0,roughness=.35)=>new THREE.MeshStandardMaterial({color,metalness,roughness});
  const body=material(0xf8f8f3,.06,.32),head=material(0x294e80,.65,.25),silver=material(0xcbd3d9,.85,.28),dark=material(0x17232c,.15,.5),plastic=material(0xf4f3ed,.02,.5),pcb=material(0x215448,0,.7);
@@ -13,7 +15,7 @@ export function createApplicator({head:headStyle='tapered'}={}){
  const box=(w,h,d,x,y,z,mat,parent)=>{const m=add(new THREE.BoxGeometry(w,h,d),mat,parent);m.position.set(x,y,z);return m;};
  const lathe=(profile,mat,parent=pen)=>add(new THREE.LatheGeometry(profile.map(([r,y])=>new THREE.Vector2(r,y)),96),mat,parent);
  const shellMaterial=body.clone();
- const shell=lathe([[9.6,-44],[10,-43.6],[10,43.6],[9.6,44],[8.8,44],[8.8,-44],[9.6,-44]],shellMaterial);
+ const shell=lathe([[9.6,-44],[10,-43.6],[10,J-.4],[9.6,J],[8.8,J],[8.8,-44],[9.6,-44]],shellMaterial);
  // A real aperture reveals a separate curved push face, rather than painted-on hardware.
  shellMaterial.onBeforeCompile=s=>{
   s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 shellPosition;').replace('#include <begin_vertex>','#include <begin_vertex>\nshellPosition=position;');
@@ -21,7 +23,13 @@ export function createApplicator({head:headStyle='tapered'}={}){
  };
  const front=new THREE.Group();pen.add(front);
  // v4 tapered head: axisymmetric taper cut by a 20° bevel plane whose normal faces the cotton contact area.
- const bevel=THREE.MathUtils.degToRad(20),tb=Math.tan(bevel),taper=.13,faceY=64,camX=tapered?-2.3:-4.3,tipX=tapered?3.7:4.7;
+ const taper=.13,faceY=J+20,camX=tapered?-2.3:-4.3,tipX=tapered?3.7:4.7;
+ // Aim point sits aimShift mm on the camera side of the tip axis, so the cotton occupies the frame edge, not its centre.
+ // The bevel angle is solved so the optical axis stays on the bevel normal (camera mounted flush).
+ const aimPoint=new THREE.Vector3(tapered?tipX-aimShift:tipX,80,0);
+ let bevel=THREE.MathUtils.degToRad(20);
+ for(let k=0;k<12;k++){const ly=faceY-camX*Math.tan(bevel)+Math.cos(bevel),lx=camX+Math.sin(bevel);bevel=Math.atan2(aimPoint.x-lx,aimPoint.y-ly);}
+ const tb=Math.tan(bevel);
  const normal=new THREE.Vector3(Math.sin(bevel),Math.cos(bevel),0);
  const faceAt=x=>faceY-x*tb;
  let cameraModule,lensLocal,stemExit,headRim=[];
@@ -29,9 +37,9 @@ export function createApplicator({head:headStyle='tapered'}={}){
   head.side=THREE.DoubleSide;
   const seg=96,rows=14,pos=[],idx=[];
   for(let i=0;i<=seg;i++){const a=i/seg*Math.PI*2,c=Math.cos(a),sn=Math.sin(a);
-   const yTop=(faceY-(9.5+taper*44)*tb*c)/(1-taper*tb*c);
-   for(let j=0;j<=rows;j++){const y=44+(yTop-44)*j/rows,r=9.5-taper*(y-44);pos.push(r*c,y,r*sn);}
-   const rr=9.5-taper*(yTop-44);headRim.push(new THREE.Vector3(rr*c,yTop,rr*sn));}
+   const yTop=(faceY-(9.5+taper*J)*tb*c)/(1-taper*tb*c);
+   for(let j=0;j<=rows;j++){const y=J+(yTop-J)*j/rows,r=9.5-taper*(y-J);pos.push(r*c,y,r*sn);}
+   const rr=9.5-taper*(yTop-J);headRim.push(new THREE.Vector3(rr*c,yTop,rr*sn));}
   for(let i=0;i<seg;i++)for(let j=0;j<rows;j++){const a=i*(rows+1)+j,b=(i+1)*(rows+1)+j;idx.push(a,b,a+1,b,b+1,a+1);}
   const side=new THREE.BufferGeometry();side.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));side.setIndex(idx);side.computeVertexNormals();add(side,head,front);
   const capPos=[0,faceY,0],capIdx=[];headRim.forEach(v=>capPos.push(v.x,v.y,v.z));for(let i=1;i<=seg;i++)capIdx.push(0,i,i+1);
@@ -53,23 +61,23 @@ export function createApplicator({head:headStyle='tapered'}={}){
   lathe([[2.65,55.2],[2.65,55.78],[1.5,55.78],[1.5,49.2],[2.3,49.2],[2.3,55.2],[2.65,55.2]],dark,front).position.x=4.7;
   lensLocal=1.65;
  }
- cylinder(9.52,.35,44.2,silver,front);
+ cylinder(9.52,.35,J+.2,silver,front);
  const tip=new THREE.Group();pen.add(tip);
  // Plug-in stem: buried spigot, axial stop, finger-grip collar and replaceable cotton.
  if(tapered){
   cylinder(1.35,6,stemExit-3,plastic,tip).position.x=tipX;
   cylinder(2.4,2.5,stemExit+.25,plastic,tip).position.x=tipX;
   cylinder(2,2,stemExit+2.5,plastic,tip).position.x=tipX;
-  cylinder(1.35,4.5,stemExit+5.75,plastic,tip).position.x=tipX;
+  const stemTop=cottonY-cottonH+1,stemBase=stemExit+3.5;cylinder(1.1,stemTop-stemBase,(stemTop+stemBase)/2,plastic,tip).position.x=tipX;
  }else{
   cylinder(1.35,6,53.5,plastic,tip).position.x=4.7;
   cylinder(2.4,1,56.7,plastic,tip).position.x=4.7;
   cylinder(2,3,58.7,plastic,tip).position.x=4.7;
   cylinder(1.35,10,65,plastic,tip).position.x=4.7;
  }
- const cotton=add(new THREE.SphereGeometry(3.75,40,28),material(0xfaf9f4,0,.95),tip);cotton.position.set(tipX,74,0);cotton.scale.y=1.6;
+ const cotton=add(new THREE.SphereGeometry(cottonR,40,28),material(0xfaf9f4,0,.95),tip);cotton.position.set(tipX,cottonY,0);cotton.scale.y=cottonH/cottonR;
  const fibers=[];const random=i=>{const n=Math.sin(i*127.1+311.7)*43758.5453;return n-Math.floor(n);};
- for(let i=0;i<700;i++){const a=random(i*3)*Math.PI*2,z=random(i*3+1)*2-1,r=Math.sqrt(1-z*z),x=Math.cos(a)*r*3.75,y=z*6,d=Math.sin(a)*r*3.75;fibers.push(x+tipX,y+74,d,x*1.02+tipX,y*1.015+74,d*1.02);}
+ for(let i=0;i<700;i++){const a=random(i*3)*Math.PI*2,z=random(i*3+1)*2-1,r=Math.sqrt(1-z*z),x=Math.cos(a)*r*cottonR,y=z*cottonH,d=Math.sin(a)*r*cottonR;fibers.push(x+tipX,y+cottonY,d,x*1.02+tipX,y*1.015+cottonY,d*1.02);}
  const fg=new THREE.BufferGeometry();fg.setAttribute('position',new THREE.Float32BufferAttribute(fibers,3));tip.add(new THREE.LineSegments(fg,new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.3})));
  const button=new THREE.Group();pen.add(button);button.position.y=20;
  function curvedFace(radius,offset,mat){
@@ -88,7 +96,7 @@ export function createApplicator({head:headStyle='tapered'}={}){
  const battery=box(10,36,7,0,-21,0,silver,internals);battery.name='Battery envelope 10 × 36 × 7 mm';
  box(11,29,1,0,18,1,pcb,internals);
  for(let i=0;i<6;i++)box(2.8,3.5,1.2,(i%2-.5)*5.5,9+Math.floor(i/2)*8,2.1,dark,internals);
- for(const x of [-7,7])box(1,76,2,x,0,-2,plastic,internals);
+ for(const x of [-7,7])box(1,J+38-4,2,x,(J-38-4)/2,-2,plastic,internals);
  let cameraEnvelope,cameraRear;
  if(tapered){const c=cameraModule.position.clone().addScaledVector(normal,-2);cameraEnvelope=add(new THREE.CylinderGeometry(1.95,1.95,4,32),dark,internals);cameraEnvelope.position.copy(c);cameraEnvelope.rotation.z=-bevel;cameraRear=cameraModule.position.clone().addScaledVector(normal,-4);}
  else{cameraEnvelope=box(5,7,4,-4.3,49,0,dark,internals);cameraRear=new THREE.Vector3(-4.3,46,1);}
@@ -114,9 +122,9 @@ export function createApplicator({head:headStyle='tapered'}={}){
  const target=new THREE.Vector3(tipX,80,0);
  const lensPosition=new THREE.Vector3(0,lensLocal,0).applyAxisAngle(new THREE.Vector3(0,0,1),cameraModule.rotation.z).add(cameraModule.position);
  const opticalCamera=new THREE.PerspectiveCamera(60,1.5,.1,200);pen.add(opticalCamera);opticalCamera.position.copy(lensPosition);opticalCamera.up.set(0,0,1);
- const orientation=new THREE.Matrix4().lookAt(lensPosition,target,new THREE.Vector3(0,0,1));opticalCamera.quaternion.setFromRotationMatrix(orientation);
- const skin=add(new THREE.PlaneGeometry(30,22),material(0xd9aaa1,0,.85),guides);skin.rotation.x=Math.PI/2;skin.position.copy(target);skin.position.y+=.1;
- const hairs=[];for(let i=0;i<38;i++){const x=(random(i+800)-.5)*28+tipX,z=(random(i+900)-.5)*20;hairs.push(x,80.14,z,x+1.8,80.14,z+2.4);}
+ const orientation=new THREE.Matrix4().lookAt(lensPosition,aimPoint,new THREE.Vector3(0,0,1));opticalCamera.quaternion.setFromRotationMatrix(orientation);
+ const skin=add(new THREE.PlaneGeometry(44,32),material(0xd9aaa1,0,.85),guides);skin.rotation.x=Math.PI/2;skin.position.copy(aimPoint);skin.position.y+=.1;
+ const hairs=[];for(let i=0;i<80;i++){const x=(random(i+800)-.5)*40+aimPoint.x,z=(random(i+900)-.5)*28;hairs.push(x,80.14,z,x+1.8,80.14,z+2.4);}
  const hg=new THREE.BufferGeometry();hg.setAttribute('position',new THREE.Float32BufferAttribute(hairs,3));guides.add(new THREE.LineSegments(hg,new THREE.LineBasicMaterial({color:0x4b3d36})));
  const opticalLines=new THREE.Group();guides.add(opticalLines);
  const lineMaterial=new THREE.LineBasicMaterial({color:0x477fa5,transparent:true,opacity:.65});
@@ -128,11 +136,11 @@ export function createApplicator({head:headStyle='tapered'}={}){
  const dg=new THREE.BufferGeometry().setFromPoints(dimensionPoints);const dimensionGuide=new THREE.LineSegments(dg,lineMaterial);guides.add(dimensionGuide);
  const grip=cylinder(10.2,36,-13,new THREE.MeshBasicMaterial({color:0x477fa5,wireframe:true,transparent:true,opacity:.10}),guides);
  const workingDistance=lensPosition.distanceTo(target);
- const headGeometry=tapered?{style:'tapered',bevelDeg:20,taperPerMm:taper,headLength:Math.max(...headRim.map(v=>v.y))-44,faceSpanX:Math.max(...headRim.map(v=>v.x))-Math.min(...headRim.map(v=>v.x)),faceWidthZ:2*Math.max(...headRim.map(v=>v.z)),cameraBezelRadius:3,collarRadius:2.4,cameraX:camX,tipX,rim:headRim,innerRadiusAt:y=>9.5-taper*(y-44)-1.2,faceAt,normal}:{style:'flat',headLength:11,faceSpanX:19,cameraX:-4.3,tipX};
+ const headGeometry=tapered?{style:'tapered',bevelDeg:+THREE.MathUtils.radToDeg(bevel).toFixed(1),joint:J,taperPerMm:taper,headLength:Math.max(...headRim.map(v=>v.y))-J,faceSpanX:Math.max(...headRim.map(v=>v.x))-Math.min(...headRim.map(v=>v.x)),faceWidthZ:2*Math.max(...headRim.map(v=>v.z)),cameraBezelRadius:3,collarRadius:2.4,cameraX:camX,tipX,rim:headRim,innerRadiusAt:y=>9.5-taper*(y-J)-1.2,faceAt,normal}:{style:'flat',headLength:11,faceSpanX:19,cameraX:-4.3,tipX};
  function setMode(mode){internals.visible=mode==='inside'||mode==='service';guides.visible=mode==='fit';button.visible=mode!=='inside';status.visible=mode!=='inside';shellMaterial.transparent=mode==='inside'||mode==='service';shellMaterial.opacity=mode==='inside'?.10:mode==='service'?.20:1;shellMaterial.depthWrite=mode!=='inside'&&mode!=='service';shellMaterial.needsUpdate=true;tail.position.y=mode==='service'?-12:0;tip.position.y=mode==='service'?14:0;}
  function setColor(color){body.color.set(color==='blue'?0xf8f8f3:0x20272c);body.metalness=color==='blue'?.06:.2;shellMaterial.color.copy(body.color);shellMaterial.metalness=body.metalness;head.color.set(color==='blue'?0x294e80:0xbfc8ce);head.metalness=color==='blue'?.65:.92;}
  setMode('hero');
- return {pen,headGeometry,cameraEnvelope,setMode,setColor,opticalCamera,opticalLines,dimensionGuide,grip,button,led,workingDistance,dimensions,internals,buttonFace,shell,componentEnvelopes:{battery:[10,36,7],board:[11,29,1],camera:tapered?'Ø3.9 × 4 mm module':[5,7,4]},target,lensPosition};
+ return {pen,headGeometry,cameraEnvelope,cotton,aimPoint,dimensions:{...dimensions,bodyLength:J+44,cottonWidth:2*cottonR,cottonLength:2*cottonH},setMode,setColor,opticalCamera,opticalLines,dimensionGuide,grip,button,led,workingDistance,internals,buttonFace,shell,componentEnvelopes:{battery:[10,36,7],board:[11,29,1],camera:tapered?'Ø3.9 × 4 mm module':[5,7,4]},target,lensPosition};
 }
 
 
