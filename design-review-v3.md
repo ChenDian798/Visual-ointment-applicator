@@ -2,7 +2,18 @@
 
 All geometry in `src/applicator.js` is specified in millimetres. The display scene uses a uniform scale; individual parts are never stretched between views.
 
-## Defined targets
+## v4 head revision (default)
+
+The v3 flat head (11 mm long, Ø19 mm, flat face) read as a cap on a tube. v4 replaces it; v3 remains selectable on the page for comparison.
+
+- Head tapers from Ø19 mm at the body joint (0.13 mm radius per mm) and is cut by a 20° bevel plane. Head length 22.4 mm; bevel face about 13.8 × 13.8 mm.
+- The bevel normal faces the contact area, so the camera sits flush on the face: the optical axis is 1.7° off the bevel normal.
+- Camera is a 3.9 mm-class endoscope module with LED ring (Ø6 mm bezel, Ø3.9 × 4 mm envelope). Camera-to-tip axis offset 6 mm (v3: 9 mm).
+- Working distance drops from about 24 mm to about 15 mm; nominal overall length stays 126 mm. The cotton covers more of the frame at this distance. Aiming at the near cotton edge is still the intended use.
+- Clearances checked in `verify-model.mjs`: bezel to face edge 1.56 mm, collar to face edge 1.22 mm, bezel to collar 0.83 mm, camera envelope to head inner wall 0.49 mm.
+- Body diameter is unchanged at 20 mm; slimming it needs a different battery and board layout.
+
+## Defined targets (v3 baseline)
 
 - Grip diameter 20 mm; nominal overall length 126 mm; shell thickness 1.2 mm.
 - Cotton envelope 7.5 × 12 mm; insertion spigot 6 mm, stop shoulder and clean gripping collar.
